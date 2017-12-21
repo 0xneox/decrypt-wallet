@@ -1,0 +1,146 @@
+Example code to decrypt old blockchain.info wallet
+Built from methods in Android-Wallet-2-App
+*/
+ 
+import java.io.UnsupportedEncodingException;
+import java.security.SecureRandom;
+import javax.annotation.Nullable;
+import android.support.annotation.Nullable;
+import org.apache.commons.codec.binary.Base64;
+import org.spongycastle.crypto.BlockCipher;
+import org.spongycastle.crypto.BufferedBlockCipher;
+import org.spongycastle.crypto.CipherParameters;
+import org.spongycastle.crypto.InvalidCipherTextException;
+import org.spongycastle.crypto.PBEParametersGenerator;
+import org.spongycastle.crypto.engines.AESEngine;
+import org.spongycastle.crypto.engines.AESFastEngine;
+import org.spongycastle.crypto.generators.PKCS5S2ParametersGenerator;
+import org.spongycastle.crypto.modes.CBCBlockCipher;
+import org.spongycastle.crypto.modes.OFBBlockCipher;
+import org.spongycastle.crypto.paddings.BlockCipherPadding;
+import org.spongycastle.crypto.paddings.ISO10126d2Padding;
+import org.spongycastle.crypto.paddings.PaddedBufferedBlockCipher;
+import org.spongycastle.crypto.params.KeyParameter;
+import org.spongycastle.crypto.params.ParametersWithIV;
+ 
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;*/
+ 
+import android.util.Base64;
+ 
+import org.spongycastle.util.encoders.Hex;
+ 
+import com.google.bitcoin.core.Base58;
+import com.google.bitcoin.core.ECKey;
+import com.google.bitcoin.core.NetworkParameters;
+import com.google.bitcoin.core.Wallet;
+import com.google.bitcoin.params.MainNetParams;
+ 
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+ 
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.*;
+ 
+import org.spongycastle.crypto.BufferedBlockCipher;
+import org.spongycastle.crypto.CipherParameters;
+import org.spongycastle.crypto.PBEParametersGenerator;
+import org.spongycastle.crypto.engines.AESEngine;
+import org.spongycastle.crypto.generators.PKCS5S2ParametersGenerator;
+import org.spongycastle.crypto.modes.CBCBlockCipher;
+import org.spongycastle.crypto.paddings.BlockCipherPadding;
+import org.spongycastle.crypto.paddings.ISO10126d2Padding;
+import org.spongycastle.crypto.paddings.PaddedBufferedBlockCipher;
+import org.spongycastle.crypto.params.KeyParameter;
+import org.spongycastle.crypto.params.ParametersWithIV;
+ 
+//import piuk.blockchain.android.util.LinuxSecureRandom;
+ 
+import java.io.UnsupportedEncodingException;
+import org.spongycastle.crypto.InvalidCipherTextException;
+ 
+public class decryptwallet {
+ 
+    public static final double SupportedEncryptionVersion = 2.0;
+    private static final int AESBlockSize = 4;
+    public static final int DefaultPBKDF2Iterations = 10;
+ 
+    public static JSONObject rootContainer;
+ 
+ 
+    public static void main(String[] args) throws UnsupportedEncodingException, InvalidCipherTextException, Exception {
+       
+        // check args
+        if (args.length != 2) {
+            System.out.println("usage: java decryptwallet password");
+            return;
+        }
+ 
+        String base64Payload = args[0];
+        String password = args[1];
+       
+        try {
+            String decrypted = decryptWallet(base64Payload, password);
+            System.out.println(decrypted);
+        } catch (InvalidCipherTextException e) {
+            return;
+        }
+       
+    }
+ 
+    public static String decryptWallet(String base64Payload, String password) throws Exception {
+        return decrypt(base64Payload, password, DefaultPBKDF2Iterations);
+    }
+ 
+    // AES 256 PBKDF2 CBC iso10126 decryption
+    // 16 byte IV must be prepended to ciphertext - Compatible with crypto-js
+    public static String decrypt(String ciphertext, String password, final int PBKDF2Iterations) throws Exception {
+        byte[] cipherdata = Base64.decode(ciphertext, Base64.NO_WRAP);
+ 
+        //Sperate the IV and cipher data
+        byte[] iv = copyOfRange(cipherdata, 0, AESBlockSize * 4);
+        byte[] input = copyOfRange(cipherdata, AESBlockSize * 4, cipherdata.length);
+ 
+        PBEParametersGenerator generator = new PKCS5S2ParametersGenerator();
+        generator.init(PBEParametersGenerator.PKCS5PasswordToUTF8Bytes(password.toCharArray()), iv, PBKDF2Iterations);
+        KeyParameter keyParam = (KeyParameter)generator.generateDerivedParameters(256);
+ 
+        CipherParameters params = new ParametersWithIV(keyParam, iv);
+ 
+        // setup AES cipher in CBC mode with PKCS7 padding
+        BlockCipherPadding padding = new ISO10126d2Padding();
+        BufferedBlockCipher cipher = new PaddedBufferedBlockCipher(new CBCBlockCipher(new AESEngine()), padding);
+        cipher.reset();
+        cipher.init(false, params);
+ 
+        // create a temporary buffer to decode into (it'll include padding)
+        byte[] buf = new byte[cipher.getOutputSize(input.length)];
+        int len = cipher.processBytes(input, 0, input.length, buf, 0);
+        len += cipher.doFinal(buf, len);
+ 
+        // remove padding
+        byte[] out = new byte[len];
+        System.arraycopy(buf, 0, out, 0, len);
+ 
+        // return string representation of decoded bytes
+        return new String(out, "UTF-8");
+    }
+ 
+    public static byte[] copyOfRange(byte[] source, int from, int to) {
+        byte[] range = new byte[to - from];
+        System.arraycopy(source, from, range, 0, range.length);
+ 
+        return range;
+    }
+ 
+}
